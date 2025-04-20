@@ -1,0 +1,8 @@
+Current system resources at time 0:500000000
+R0 R1 R2 R3 R4
+
+Master running deadlock detection at time 1:0
+Master running deadlock detection at time 1:0: No deadlocks detected
+Current system resources at time 1:0
+R0 R1 R2 R3 R4
+
