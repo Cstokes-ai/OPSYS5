@@ -43,7 +43,8 @@ void increment_clock() {
         shared_clock[1] -= 1000000000;
     }
 }
-
+// is a wait queue needed?
+// if so, implement it 
 void print_resource_table() {
     fprintf(log_file, "\nResource Allocation Table at time %d:%d:\n", shared_clock[0], shared_clock[1]);
     fprintf(log_file, "    Total    Available\n");
