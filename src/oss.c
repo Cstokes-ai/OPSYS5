@@ -2,72 +2,67 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <signal.h>
+#include <string.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <sys/msg.h>
 #include <sys/wait.h>
 #include <time.h>
-#include <string.h>
-#include <stdbool.h>
+#include <errno.h>
 
+#define MAX_PROCESSES 18
 #define MAX_RESOURCES 5
 #define MAX_INSTANCES 10
-#define MAX_PROCESSES 18
-
-typedef struct {
-    int available[MAX_RESOURCES];
-    int allocation[MAX_PROCESSES][MAX_RESOURCES];
-    int request[MAX_PROCESSES][MAX_RESOURCES];
-} ResourceDescriptor;
+#define MAX_REQUESTS 100
 
 typedef struct {
     long mtype;
     int pid;
     int resource;
     int quantity;
-    int request;
+    int request; // 1 = request, 0 = release
 } Message;
 
-int shmid_clock, shmid_resources, msqid;
+typedef struct {
+    int total[MAX_RESOURCES];
+    int available[MAX_RESOURCES];
+    int allocation[MAX_PROCESSES][MAX_RESOURCES];
+} Resource;
+
+int shmid_clock;
+int msqid;
 int *shared_clock;
-ResourceDescriptor *resources;
+Resource *resources;
 FILE *log_file;
+pid_t child_pids[MAX_PROCESSES] = {0};
 
-void cleanup() {
-    if (log_file) fclose(log_file);
-    shmctl(shmid_clock, IPC_RMID, NULL);
-    shmctl(shmid_resources, IPC_RMID, NULL);
-    msgctl(msqid, IPC_RMID, NULL);
-}
-
-void signal_handler(int sig) {
-    cleanup();
-    exit(0);
-}
-
-void increment_clock(int increment) {
-    shared_clock[1] += increment;
+void increment_clock() {
+    shared_clock[1] += rand() % 1000;
     if (shared_clock[1] >= 1000000000) {
-        shared_clock[0] += 1;
+        shared_clock[0]++;
         shared_clock[1] -= 1000000000;
     }
 }
 
-void log_resource_table() {
-    fprintf(log_file, "Current system resources at time %d:%d\n", shared_clock[0], shared_clock[1]);
-    fprintf(log_file, "R0 R1 R2 R3 R4\n");
+void print_resource_table() {
+    fprintf(log_file, "\nResource Allocation Table at time %d:%d:\n", shared_clock[0], shared_clock[1]);
+    fprintf(log_file, "    Total    Available\n");
+    for (int i = 0; i < MAX_RESOURCES; i++) {
+        fprintf(log_file, "R%d:   %3d        %3d\n", i, resources->total[i], resources->available[i]);
+    }
+    fprintf(log_file, "\nAllocation per Process:\n");
     for (int i = 0; i < MAX_PROCESSES; i++) {
-        bool active = false;
+        int allocated = 0;
         for (int j = 0; j < MAX_RESOURCES; j++) {
             if (resources->allocation[i][j] > 0) {
-                active = true;
+                allocated = 1;
                 break;
             }
         }
-        if (active) {
-            fprintf(log_file, "P%d ", i);
+        if (allocated) {
+            fprintf(log_file, "P%d: ", i);
             for (int j = 0; j < MAX_RESOURCES; j++) {
-                fprintf(log_file, "%d ", resources->allocation[i][j]);
+                fprintf(log_file, "R%d=%d ", j, resources->allocation[i][j]);
             }
             fprintf(log_file, "\n");
         }
@@ -76,150 +71,162 @@ void log_resource_table() {
     fflush(log_file);
 }
 
-bool req_lt_avail(const int *req, const int *avail, const int pnum, const int num_res) {
-    for (int i = 0; i < num_res; i++) {
-        if (req[pnum * num_res + i] > avail[i]) return false;
-    }
-    return true;
-}
-
-bool deadlock(const int *available, const int m, const int n, const int *request, const int *allocated) {
-    int work[m];
-    bool finish[n];
-
-    for (int i = 0; i < m; i++) work[i] = available[i];
-    for (int i = 0; i < n; i++) finish[i] = false;
-
-    int p;
-    for (p = 0; p < n; p++) {
-        if (!finish[p] && req_lt_avail(request, work, p, m)) {
-            finish[p] = true;
-            for (int i = 0; i < m; i++) {
-                work[i] += allocated[p * m + i];
-            }
-            p = -1;
+void handle_sigint(int sig) {
+    fprintf(stderr, "Master: Caught signal %d, terminating children.\n", sig);
+    for (int i = 0; i < MAX_PROCESSES; i++) {
+        if (child_pids[i] > 0) {
+            kill(child_pids[i], SIGTERM);
         }
     }
-
-    for (p = 0; p < n; p++) if (!finish[p]) return true;
-    return false;
+    while (wait(NULL) > 0);
+    shmdt(shared_clock);
+    shmctl(shmid_clock, IPC_RMID, NULL);
+    msgctl(msqid, IPC_RMID, NULL);
+    if (log_file) fclose(log_file);
+    exit(1);
 }
 
-void deadlock_detection() {
-    int m = MAX_RESOURCES, n = MAX_PROCESSES;
-    int allocated_flat[MAX_PROCESSES * MAX_RESOURCES];
-    int request_flat[MAX_PROCESSES * MAX_RESOURCES];
+void check_terminated_children() {
+    int status;
+    pid_t pid;
+    while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
+        int local_index = -1;
+        for (int i = 0; i < MAX_PROCESSES; i++) {
+            if (child_pids[i] == pid) {
+                local_index = i;
+                break;
+            }
+        }
+        if (local_index == -1) continue;
+
+        fprintf(log_file, "Master detected Process P%d terminated at time %d:%d\n",
+                local_index, shared_clock[0], shared_clock[1]);
+
+        for (int j = 0; j < MAX_RESOURCES; j++) {
+            resources->available[j] += resources->allocation[local_index][j];
+            resources->allocation[local_index][j] = 0;
+        }
+
+        fflush(log_file);
+        child_pids[local_index] = 0;
+    }
+}
+
+void launch_child_processes(int *children_launched, int max_children) {
+    if (*children_launched >= max_children) return;
+
+    int idx = -1;
+    for (int i = 0; i < MAX_PROCESSES; i++) {
+        if (child_pids[i] == 0) {
+            idx = i;
+            break;
+        }
+    }
+    if (idx == -1) return;
+
+    pid_t pid = fork();
+    if (pid == 0) {
+        char msqid_str[12], clockid_str[12], index_str[12];
+        sprintf(msqid_str, "%d", msqid);
+        sprintf(clockid_str, "%d", shmid_clock);
+        sprintf(index_str, "%d", idx);
+        execl("./user", "./user", msqid_str, clockid_str, index_str, NULL);
+        perror("execl failed");
+        exit(1);
+    } else if (pid > 0) {
+        (*children_launched)++;
+        child_pids[idx] = pid;
+        fprintf(log_file, "Master launched Process P%d (PID %d) at time %d:%d\n",
+                idx, pid, shared_clock[0], shared_clock[1]);
+        fflush(log_file);
+    } else {
+        perror("fork failed");
+    }
+}
+
+void initialize_resources() {
+    for (int i = 0; i < MAX_RESOURCES; i++) {
+        resources->total[i] = (rand() % MAX_INSTANCES) + 1;
+        resources->available[i] = resources->total[i];
+    }
 
     for (int i = 0; i < MAX_PROCESSES; i++) {
         for (int j = 0; j < MAX_RESOURCES; j++) {
-            allocated_flat[i * MAX_RESOURCES + j] = resources->allocation[i][j];
-            request_flat[i * MAX_RESOURCES + j] = resources->request[i][j];
+            resources->allocation[i][j] = 0;
         }
     }
-
-    fprintf(log_file, "Master running deadlock detection at time %d:%d\n", shared_clock[0], shared_clock[1]);
-
-    if (deadlock(resources->available, m, n, request_flat, allocated_flat)) {
-        fprintf(log_file, "Master running deadlock detection at time %d:%d: Deadlocks detected\n", shared_clock[0], shared_clock[1]);
-        for (int i = 0; i < MAX_PROCESSES; i++) {
-            bool is_deadlocked = true;
-            for (int j = 0; j < MAX_RESOURCES; j++) {
-                if (resources->request[i][j] > resources->available[j]) {
-                    is_deadlocked = false;
-                    break;
-                }
-            }
-            if (is_deadlocked) {
-                fprintf(log_file, "Master terminating P%d to remove deadlock\n", i);
-                for (int j = 0; j < MAX_RESOURCES; j++) {
-                    if (resources->allocation[i][j] > 0) {
-                        fprintf(log_file, "Resources released: R%d:%d\n", j, resources->allocation[i][j]);
-                        resources->available[j] += resources->allocation[i][j];
-                        resources->allocation[i][j] = 0;
-                    }
-                }
-                fprintf(log_file, "Process P%d terminated\n", i);
-            }
-        }
-    } else {
-        fprintf(log_file, "Master running deadlock detection at time %d:%d: No deadlocks detected\n", shared_clock[0], shared_clock[1]);
-    }
-    fflush(log_file);
 }
 
 int main(int argc, char *argv[]) {
-    signal(SIGINT, signal_handler);
+    signal(SIGINT, handle_sigint);
+    srand(time(NULL));
 
-    int n = 1, s = 1;
-    int opt;
-    while ((opt = getopt(argc, argv, "n:s:")) != -1) {
-        switch (opt) {
-            case 'n': n = atoi(optarg); break;
-            case 's': s = atoi(optarg); break;
-            default:
-                fprintf(stderr, "Usage: %s [-n num_processes] [-s simulation_time]\n", argv[0]);
-                exit(1);
-        }
+    shmid_clock = shmget(IPC_PRIVATE, sizeof(int) * 2, IPC_CREAT | 0666);
+    if (shmid_clock == -1) {
+        perror("shmget clock");
+        exit(1);
+    }
+    shared_clock = (int *)shmat(shmid_clock, NULL, 0);
+    shared_clock[0] = 0;
+    shared_clock[1] = 0;
+
+    int shmid_resources = shmget(IPC_PRIVATE, sizeof(Resource), IPC_CREAT | 0666);
+    if (shmid_resources == -1) {
+        perror("shmget resources");
+        exit(1);
+    }
+    resources = (Resource *)shmat(shmid_resources, NULL, 0);
+
+    msqid = msgget(IPC_PRIVATE, IPC_CREAT | 0666);
+    if (msqid == -1) {
+        perror("msgget");
+        exit(1);
     }
 
     log_file = fopen("oss.log", "w");
-    if (!log_file) { perror("Failed to open log file"); exit(1); }
-
-    shmid_clock = shmget(IPC_PRIVATE, sizeof(int) * 2, IPC_CREAT | 0666);
-    shmid_resources = shmget(IPC_PRIVATE, sizeof(ResourceDescriptor), IPC_CREAT | 0666);
-    msqid = msgget(IPC_PRIVATE, IPC_CREAT | 0666);
-
-    shared_clock = (int *)shmat(shmid_clock, NULL, 0);
-    resources = (ResourceDescriptor *)shmat(shmid_resources, NULL, 0);
-
-    shared_clock[0] = 0; shared_clock[1] = 0;
-    for (int i = 0; i < MAX_RESOURCES; i++) {
-        resources->available[i] = MAX_INSTANCES;
-        for (int j = 0; j < MAX_PROCESSES; j++) {
-            resources->allocation[j][i] = 0;
-            resources->request[j][i] = 0;
-        }
+    if (!log_file) {
+        perror("fopen log_file");
+        exit(1);
     }
 
-    while (shared_clock[0] < s) {
-        increment_clock(10000);
-        Message msg;
-        while (msgrcv(msqid, &msg, sizeof(Message) - sizeof(long), 0, IPC_NOWAIT) != -1) {
-            if (msg.request == 1) {
-                fprintf(log_file, "Master has detected Process P%d requesting R%d at time %d:%d\n",
-                        msg.pid, msg.resource, shared_clock[0], shared_clock[1]);
+    initialize_resources();
 
+    int children_launched = 0;
+    int max_children = 5;
+    int loop_counter = 0;
+
+    while (1) {
+        increment_clock();
+        check_terminated_children();
+        launch_child_processes(&children_launched, max_children);
+
+        Message msg;
+        if (msgrcv(msqid, &msg, sizeof(Message) - sizeof(long), 0, IPC_NOWAIT) != -1) {
+            fprintf(log_file, "Master received msg from P%d: %s %d of R%d at time %d:%d\n",
+                    msg.pid, msg.request ? "Requesting" : "Releasing",
+                    msg.quantity, msg.resource,
+                    shared_clock[0], shared_clock[1]);
+
+            if (msg.request) {
                 if (resources->available[msg.resource] >= msg.quantity) {
                     resources->available[msg.resource] -= msg.quantity;
                     resources->allocation[msg.pid][msg.resource] += msg.quantity;
-                    fprintf(log_file, "Master granting P%d request R%d at time %d:%d\n",
-                            msg.pid, msg.resource, shared_clock[0], shared_clock[1]);
+                    fprintf(log_file, "Request granted\n");
                 } else {
-                    resources->request[msg.pid][msg.resource] += msg.quantity;
-                    fprintf(log_file, "Master: no instances of R%d available, P%d added to wait queue at time %d:%d\n",
-                            msg.resource, msg.pid, shared_clock[0], shared_clock[1]);
+                    fprintf(log_file, "Request denied (not enough resources), P%d added to wait queue\n", msg.pid);
                 }
             } else {
                 resources->available[msg.resource] += msg.quantity;
                 resources->allocation[msg.pid][msg.resource] -= msg.quantity;
-                fprintf(log_file, "Master has acknowledged Process P%d releasing R%d at time %d:%d\n",
-                        msg.pid, msg.resource, shared_clock[0], shared_clock[1]);
-                fprintf(log_file, "Resources released: R%d:%d\n", msg.resource, msg.quantity);
             }
             fflush(log_file);
+            print_resource_table();
         }
 
-        if (shared_clock[0] % 1 == 0 && shared_clock[1] == 0) {
-            deadlock_detection();
-        }
-
-        if (shared_clock[1] % 500000000 == 0) {
-            log_resource_table();
-        }
-
-        usleep(1000);
+        usleep(100000);
+        if (++loop_counter > 200) break;
     }
 
-    cleanup();
+    handle_sigint(SIGINT);
     return 0;
 }

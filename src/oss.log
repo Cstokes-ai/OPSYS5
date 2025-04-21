@@ -1,8 +1,349 @@
-Current system resources at time 0:500000000
-R0 R1 R2 R3 R4
+Master launched Process P0 (PID 1493) at time 0:66
+Master launched Process P1 (PID 1494) at time 0:884
+Master received msg from P0: Releasing 3 of R4 at time 0:884
 
-Master running deadlock detection at time 1:0
-Master running deadlock detection at time 1:0: No deadlocks detected
-Current system resources at time 1:0
-R0 R1 R2 R3 R4
+Resource Allocation Table at time 0:884:
+    Total    Available
+R0:     9          9
+R1:     2          2
+R2:     2          2
+R3:     6          6
+R4:     9         12
+
+Allocation per Process:
+
+Master launched Process P2 (PID 1495) at time 0:1563
+Master received msg from P1: Requesting 10 of R0 at time 0:1563
+Request denied (not enough resources), P1 added to wait queue
+
+Resource Allocation Table at time 0:1563:
+    Total    Available
+R0:     9          9
+R1:     2          2
+R2:     2          2
+R3:     6          6
+R4:     9         12
+
+Allocation per Process:
+
+Master launched Process P3 (PID 1496) at time 0:2293
+Master received msg from P0: Requesting 5 of R1 at time 0:2293
+Request denied (not enough resources), P0 added to wait queue
+
+Resource Allocation Table at time 0:2293:
+    Total    Available
+R0:     9          9
+R1:     2          2
+R2:     2          2
+R3:     6          6
+R4:     9         12
+
+Allocation per Process:
+
+Master launched Process P4 (PID 1497) at time 0:2332
+Master received msg from P1: Releasing 8 of R4 at time 0:2332
+
+Resource Allocation Table at time 0:2332:
+    Total    Available
+R0:     9          9
+R1:     2          2
+R2:     2          2
+R3:     6          6
+R4:     9         20
+
+Allocation per Process:
+
+Master received msg from P2: Releasing 2 of R3 at time 0:3229
+
+Resource Allocation Table at time 0:3229:
+    Total    Available
+R0:     9          9
+R1:     2          2
+R2:     2          2
+R3:     6          8
+R4:     9         20
+
+Allocation per Process:
+
+Master detected Process P0 terminated at time 0:4168
+Master detected Process P1 terminated at time 0:4168
+Master received msg from P0: Releasing 1 of R2 at time 0:4168
+
+Resource Allocation Table at time 0:4168:
+    Total    Available
+R0:     9          9
+R1:     2          2
+R2:     2          3
+R3:     6          8
+R4:     9          9
+
+Allocation per Process:
+
+Master detected Process P2 terminated at time 0:4176
+Master received msg from P1: Releasing 5 of R2 at time 0:4176
+
+Resource Allocation Table at time 0:4176:
+    Total    Available
+R0:     9          9
+R1:     2          2
+R2:     2          8
+R3:     6          6
+R4:     9          9
+
+Allocation per Process:
+
+Master detected Process P3 terminated at time 0:4478
+Master received msg from P2: Releasing 3 of R4 at time 0:4478
+
+Resource Allocation Table at time 0:4478:
+    Total    Available
+R0:     9          9
+R1:     2          2
+R2:     2          8
+R3:     6          6
+R4:     9         12
+
+Allocation per Process:
+
+Master received msg from P3: Releasing 3 of R3 at time 0:5184
+
+Resource Allocation Table at time 0:5184:
+    Total    Available
+R0:     9          9
+R1:     2          2
+R2:     2          8
+R3:     6          9
+R4:     9         12
+
+Allocation per Process:
+
+Master detected Process P4 terminated at time 0:5629
+Master received msg from P0: Requesting 5 of R2 at time 0:5629
+Request granted
+
+Resource Allocation Table at time 0:5629:
+    Total    Available
+R0:     9          9
+R1:     2          2
+R2:     2          3
+R3:     6          9
+R4:     9         12
+
+Allocation per Process:
+P0: R0=0 R1=0 R2=4 R3=0 R4=0 
+
+Master received msg from P1: Requesting 8 of R4 at time 0:6086
+Request granted
+
+Resource Allocation Table at time 0:6086:
+    Total    Available
+R0:     9          9
+R1:     2          2
+R2:     2          3
+R3:     6          9
+R4:     9          4
+
+Allocation per Process:
+P0: R0=0 R1=0 R2=4 R3=0 R4=0 
+P1: R0=0 R1=0 R2=-5 R3=0 R4=8 
+
+Master received msg from P2: Releasing 6 of R1 at time 0:6595
+
+Resource Allocation Table at time 0:6595:
+    Total    Available
+R0:     9          9
+R1:     2          8
+R2:     2          3
+R3:     6          9
+R4:     9          4
+
+Allocation per Process:
+P0: R0=0 R1=0 R2=4 R3=0 R4=0 
+P1: R0=0 R1=0 R2=-5 R3=0 R4=8 
+
+Master received msg from P3: Releasing 3 of R3 at time 0:7325
+
+Resource Allocation Table at time 0:7325:
+    Total    Available
+R0:     9          9
+R1:     2          8
+R2:     2          3
+R3:     6         12
+R4:     9          4
+
+Allocation per Process:
+P0: R0=0 R1=0 R2=4 R3=0 R4=0 
+P1: R0=0 R1=0 R2=-5 R3=0 R4=8 
+
+Master received msg from P4: Releasing 1 of R4 at time 0:7813
+
+Resource Allocation Table at time 0:7813:
+    Total    Available
+R0:     9          9
+R1:     2          8
+R2:     2          3
+R3:     6         12
+R4:     9          5
+
+Allocation per Process:
+P0: R0=0 R1=0 R2=4 R3=0 R4=0 
+P1: R0=0 R1=0 R2=-5 R3=0 R4=8 
+
+Master received msg from P0: Releasing 3 of R1 at time 0:8224
+
+Resource Allocation Table at time 0:8224:
+    Total    Available
+R0:     9          9
+R1:     2         11
+R2:     2          3
+R3:     6         12
+R4:     9          5
+
+Allocation per Process:
+P0: R0=0 R1=-3 R2=4 R3=0 R4=0 
+P1: R0=0 R1=0 R2=-5 R3=0 R4=8 
+
+Master received msg from P1: Releasing 10 of R4 at time 0:8286
+
+Resource Allocation Table at time 0:8286:
+    Total    Available
+R0:     9          9
+R1:     2         11
+R2:     2          3
+R3:     6         12
+R4:     9         15
+
+Allocation per Process:
+P0: R0=0 R1=-3 R2=4 R3=0 R4=0 
+
+Master received msg from P2: Requesting 3 of R4 at time 0:8367
+Request granted
+
+Resource Allocation Table at time 0:8367:
+    Total    Available
+R0:     9          9
+R1:     2         11
+R2:     2          3
+R3:     6         12
+R4:     9         12
+
+Allocation per Process:
+P0: R0=0 R1=-3 R2=4 R3=0 R4=0 
+
+Master received msg from P3: Requesting 2 of R4 at time 0:9068
+Request granted
+
+Resource Allocation Table at time 0:9068:
+    Total    Available
+R0:     9          9
+R1:     2         11
+R2:     2          3
+R3:     6         12
+R4:     9         10
+
+Allocation per Process:
+P0: R0=0 R1=-3 R2=4 R3=0 R4=0 
+P3: R0=0 R1=0 R2=0 R3=-6 R4=2 
+
+Master received msg from P4: Releasing 1 of R2 at time 0:9159
+
+Resource Allocation Table at time 0:9159:
+    Total    Available
+R0:     9          9
+R1:     2         11
+R2:     2          4
+R3:     6         12
+R4:     9         10
+
+Allocation per Process:
+P0: R0=0 R1=-3 R2=4 R3=0 R4=0 
+P3: R0=0 R1=0 R2=0 R3=-6 R4=2 
+
+Master received msg from P2: Releasing 4 of R0 at time 0:9943
+
+Resource Allocation Table at time 0:9943:
+    Total    Available
+R0:     9         13
+R1:     2         11
+R2:     2          4
+R3:     6         12
+R4:     9         10
+
+Allocation per Process:
+P0: R0=0 R1=-3 R2=4 R3=0 R4=0 
+P3: R0=0 R1=0 R2=0 R3=-6 R4=2 
+
+Master received msg from P3: Releasing 5 of R0 at time 0:10199
+
+Resource Allocation Table at time 0:10199:
+    Total    Available
+R0:     9         18
+R1:     2         11
+R2:     2          4
+R3:     6         12
+R4:     9         10
+
+Allocation per Process:
+P0: R0=0 R1=-3 R2=4 R3=0 R4=0 
+P3: R0=-5 R1=0 R2=0 R3=-6 R4=2 
+
+Master received msg from P4: Releasing 9 of R0 at time 0:10655
+
+Resource Allocation Table at time 0:10655:
+    Total    Available
+R0:     9         27
+R1:     2         11
+R2:     2          4
+R3:     6         12
+R4:     9         10
+
+Allocation per Process:
+P0: R0=0 R1=-3 R2=4 R3=0 R4=0 
+P3: R0=-5 R1=0 R2=0 R3=-6 R4=2 
+
+Master received msg from P3: Releasing 8 of R2 at time 0:11378
+
+Resource Allocation Table at time 0:11378:
+    Total    Available
+R0:     9         27
+R1:     2         11
+R2:     2         12
+R3:     6         12
+R4:     9         10
+
+Allocation per Process:
+P0: R0=0 R1=-3 R2=4 R3=0 R4=0 
+P3: R0=-5 R1=0 R2=-8 R3=-6 R4=2 
+
+Master received msg from P4: Requesting 5 of R1 at time 0:12298
+Request granted
+
+Resource Allocation Table at time 0:12298:
+    Total    Available
+R0:     9         27
+R1:     2          6
+R2:     2         12
+R3:     6         12
+R4:     9         10
+
+Allocation per Process:
+P0: R0=0 R1=-3 R2=4 R3=0 R4=0 
+P3: R0=-5 R1=0 R2=-8 R3=-6 R4=2 
+P4: R0=-9 R1=5 R2=-1 R3=0 R4=-1 
+
+Master received msg from P4: Requesting 2 of R3 at time 0:12477
+Request granted
+
+Resource Allocation Table at time 0:12477:
+    Total    Available
+R0:     9         27
+R1:     2          6
+R2:     2         12
+R3:     6         10
+R4:     9         10
+
+Allocation per Process:
+P0: R0=0 R1=-3 R2=4 R3=0 R4=0 
+P3: R0=-5 R1=0 R2=-8 R3=-6 R4=2 
+P4: R0=-9 R1=5 R2=-1 R3=2 R4=-1 
 
