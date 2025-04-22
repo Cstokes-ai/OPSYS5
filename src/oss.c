@@ -9,6 +9,7 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <errno.h>
+#include <getopt.h>
 
 #define MAX_PROCESSES 18
 #define MAX_RESOURCES 5
@@ -36,6 +37,20 @@ Resource *resources;
 FILE *log_file;
 pid_t child_pids[MAX_PROCESSES] = {0};
 
+int max_children = 5;
+int simul_limit = 5;
+int launch_interval_ms = 1000;
+char log_filename[256] = "oss.log";
+
+void print_usage(const char *progname) {
+    printf("Usage: %s [-h] [-n proc] [-s simul] [-i intervalMs] [-f logfile]\n", progname);
+    printf("  -h              : Show help/usage info\n");
+    printf("  -n proc         : Total number of processes to launch\n");
+    printf("  -s simul        : Max simultaneous processes (up to 18)\n");
+    printf("  -i intervalMs   : Interval in milliseconds to launch children\n");
+    printf("  -f logfile      : Log file name (default: oss.log)\n");
+}
+
 void increment_clock() {
     shared_clock[1] += rand() % 1000;
     if (shared_clock[1] >= 1000000000) {
@@ -43,8 +58,7 @@ void increment_clock() {
         shared_clock[1] -= 1000000000;
     }
 }
-// is a wait queue needed?
-// if so, implement it 
+
 void print_resource_table() {
     fprintf(log_file, "\nResource Allocation Table at time %d:%d:\n", shared_clock[0], shared_clock[1]);
     fprintf(log_file, "    Total    Available\n");
@@ -113,8 +127,14 @@ void check_terminated_children() {
     }
 }
 
-void launch_child_processes(int *children_launched, int max_children) {
+void launch_child_processes(int *children_launched) {
     if (*children_launched >= max_children) return;
+
+    int active = 0;
+    for (int i = 0; i < MAX_PROCESSES; i++) {
+        if (child_pids[i] > 0) active++;
+    }
+    if (active >= simul_limit) return;
 
     int idx = -1;
     for (int i = 0; i < MAX_PROCESSES; i++) {
@@ -159,6 +179,31 @@ void initialize_resources() {
 }
 
 int main(int argc, char *argv[]) {
+    int opt;
+    while ((opt = getopt(argc, argv, "hn:s:i:f:")) != -1) {
+        switch (opt) {
+            case 'h':
+                print_usage(argv[0]);
+                exit(0);
+            case 'n':
+                max_children = atoi(optarg);
+                break;
+            case 's':
+                simul_limit = atoi(optarg);
+                if (simul_limit > MAX_PROCESSES) simul_limit = MAX_PROCESSES;
+                break;
+            case 'i':
+                launch_interval_ms = atoi(optarg);
+                break;
+            case 'f':
+                strncpy(log_filename, optarg, sizeof(log_filename) - 1);
+                break;
+            default:
+                print_usage(argv[0]);
+                exit(1);
+        }
+    }
+
     signal(SIGINT, handle_sigint);
     srand(time(NULL));
 
@@ -184,7 +229,7 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    log_file = fopen("oss.log", "w");
+    log_file = fopen(log_filename, "w");
     if (!log_file) {
         perror("fopen log_file");
         exit(1);
@@ -193,13 +238,12 @@ int main(int argc, char *argv[]) {
     initialize_resources();
 
     int children_launched = 0;
-    int max_children = 5;
     int loop_counter = 0;
 
     while (1) {
         increment_clock();
         check_terminated_children();
-        launch_child_processes(&children_launched, max_children);
+        launch_child_processes(&children_launched);
 
         Message msg;
         if (msgrcv(msqid, &msg, sizeof(Message) - sizeof(long), 0, IPC_NOWAIT) != -1) {
@@ -214,7 +258,7 @@ int main(int argc, char *argv[]) {
                     resources->allocation[msg.pid][msg.resource] += msg.quantity;
                     fprintf(log_file, "Request granted\n");
                 } else {
-                    fprintf(log_file, "Request denied (not enough resources), P%d added to wait queue\n", msg.pid);
+                    fprintf(log_file, "Request denied (not enough resources), P%d would be blocked\n", msg.pid);
                 }
             } else {
                 resources->available[msg.resource] += msg.quantity;
@@ -224,7 +268,7 @@ int main(int argc, char *argv[]) {
             print_resource_table();
         }
 
-        usleep(100000);
+        usleep(launch_interval_ms * 1000);  // Convert to microseconds
         if (++loop_counter > 200) break;
     }
 
