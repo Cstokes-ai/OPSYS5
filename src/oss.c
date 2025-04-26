@@ -30,6 +30,14 @@ typedef struct {
     int allocation[MAX_PROCESSES][MAX_RESOURCES];
 } Resource;
 
+// Blocked request info
+typedef struct {
+    int valid;
+    int pid;
+    int resource;
+    int quantity;
+} BlockedRequest;
+
 int shmid_clock;
 int msqid;
 int *shared_clock;
@@ -42,13 +50,10 @@ int simul_limit = 5;
 int launch_interval_ms = 1000;
 char log_filename[256] = "oss.log";
 
+BlockedRequest blocked[MAX_PROCESSES] = {0}; // Array for blocked processes
+
 void print_usage(const char *progname) {
     printf("Usage: %s [-h] [-n proc] [-s simul] [-i intervalMs] [-f logfile]\n", progname);
-    printf("  -h              : Show help/usage info\n");
-    printf("  -n proc         : Total number of processes to launch\n");
-    printf("  -s simul        : Max simultaneous processes (up to 18)\n");
-    printf("  -i intervalMs   : Interval in milliseconds to launch children\n");
-    printf("  -f logfile      : Log file name (default: oss.log)\n");
 }
 
 void increment_clock() {
@@ -83,6 +88,19 @@ void print_resource_table() {
         }
     }
     fprintf(log_file, "\n");
+
+    // Also print blocked processes
+    fprintf(log_file, "Blocked Processes:\n");
+    int any_blocked = 0;
+    for (int i = 0; i < MAX_PROCESSES; i++) {
+        if (blocked[i].valid) {
+            fprintf(log_file, "P%d is blocked requesting %d of R%d\n", blocked[i].pid, blocked[i].quantity, blocked[i].resource);
+            any_blocked = 1;
+        }
+    }
+    if (!any_blocked) {
+        fprintf(log_file, "None\n");
+    }
     fflush(log_file);
 }
 
@@ -117,6 +135,7 @@ void check_terminated_children() {
         fprintf(log_file, "Master detected Process P%d terminated at time %d:%d\n",
                 local_index, shared_clock[0], shared_clock[1]);
 
+        // Release its resources
         for (int j = 0; j < MAX_RESOURCES; j++) {
             resources->available[j] += resources->allocation[local_index][j];
             resources->allocation[local_index][j] = 0;
@@ -174,6 +193,24 @@ void initialize_resources() {
     for (int i = 0; i < MAX_PROCESSES; i++) {
         for (int j = 0; j < MAX_RESOURCES; j++) {
             resources->allocation[i][j] = 0;
+        }
+    }
+}
+
+// Attempt to unblock waiting processes
+void attempt_to_unblock() {
+    for (int i = 0; i < MAX_PROCESSES; i++) {
+        if (blocked[i].valid) {
+            int res = blocked[i].resource;
+            int qty = blocked[i].quantity;
+            if (resources->available[res] >= qty) {
+                // Grant the request
+                resources->available[res] -= qty;
+                resources->allocation[blocked[i].pid][res] += qty;
+                fprintf(log_file, "Master unblocked P%d and granted %d of R%d at time %d:%d\n",
+                        blocked[i].pid, qty, res, shared_clock[0], shared_clock[1]);
+                blocked[i].valid = 0; // Remove from blocked list
+            }
         }
     }
 }
@@ -258,17 +295,25 @@ int main(int argc, char *argv[]) {
                     resources->allocation[msg.pid][msg.resource] += msg.quantity;
                     fprintf(log_file, "Request granted\n");
                 } else {
-                    fprintf(log_file, "Request denied (not enough resources), P%d would be blocked\n", msg.pid);
+                    fprintf(log_file, "Request denied, blocking P%d\n", msg.pid);
+                    blocked[msg.pid].valid = 1;
+                    blocked[msg.pid].pid = msg.pid;
+                    blocked[msg.pid].resource = msg.resource;
+                    blocked[msg.pid].quantity = msg.quantity;
                 }
             } else {
                 resources->available[msg.resource] += msg.quantity;
                 resources->allocation[msg.pid][msg.resource] -= msg.quantity;
+                // Release resource message
+                fprintf(log_file, "Release processed(release message)\n");
             }
+
+            attempt_to_unblock(); // Retry blocked processes if possible
             fflush(log_file);
             print_resource_table();
         }
 
-        usleep(launch_interval_ms * 1000);  // Convert to microseconds
+        usleep(launch_interval_ms * 1000);
         if (++loop_counter > 200) break;
     }
 
